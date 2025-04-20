@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const { audioUrl } = req.body;
     if (!audioUrl) return res.status(400).json({ error: 'Missing audioUrl' });
 
-    // Step 1: Download Twilio audio
+    // Step 1: Download audio
     const audioResponse = await fetch(audioUrl + '.mp3');
     const audioBuffer = await audioResponse.arrayBuffer();
 
@@ -32,9 +32,12 @@ export default async function handler(req, res) {
     });
 
     const whisperData = await whisperResponse.json();
+    const transcript = whisperData.text;
     console.log('Whisper transcript:', transcript);
 
-    console.log('Caller said:', transcript);
+    if (!transcript || transcript.trim() === '') {
+      throw new Error('Whisper returned an empty transcript.');
+    }
 
     // Step 3: Send to GPT-4
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -46,7 +49,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'gpt-4',
         messages: [
-          { role: 'system', content: 'You are Ava, a friendly and helpful insurance assistant for United Liberty Insurance Agency. Be professional and concise, and help the caller with their insurance question.' },
+          { role: 'system', content: 'You are Ava, a professional, helpful voice assistant for an insurance agency.' },
           { role: 'user', content: transcript },
         ],
       }),
@@ -54,15 +57,14 @@ export default async function handler(req, res) {
 
     const gptData = await gptResponse.json();
 
-if (!gptData.choices || !gptData.choices[0]) {
-  throw new Error('GPT did not return a valid response.');
-}
+    if (!gptData.choices || !gptData.choices[0]) {
+      throw new Error('GPT did not return a valid response.');
+    }
 
-const replyText = gptData.choices[0].message.content;
-
+    const replyText = gptData.choices[0].message.content;
     console.log('Ava says:', replyText);
 
-    // Step 4: Use ElevenLabs to generate voice
+    // Step 4: Generate voice with ElevenLabs
     const elevenResponse = await fetch('https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL/stream', {
       method: 'POST',
       headers: {
@@ -81,12 +83,11 @@ const replyText = gptData.choices[0].message.content;
 
     const speechAudio = await elevenResponse.arrayBuffer();
 
-    // Step 5: Return voice to Twilio
+    // Step 5: Return audio to Twilio
     res.setHeader('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(speechAudio));
   } catch (err) {
-   console.error('Ava Error:', err.message);
-res.status(500).json({ error: err.message });
+    console.error('Ava Error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 }
-
