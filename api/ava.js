@@ -32,7 +32,8 @@ export default async function handler(req, res) {
     });
 
     const whisperData = await whisperResponse.json();
-    const transcript = whisperData.text;
+    console.log('Whisper transcript:', transcript);
+
     console.log('Caller said:', transcript);
 
     // Step 3: Send to GPT-4
