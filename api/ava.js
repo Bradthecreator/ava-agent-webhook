@@ -78,8 +78,8 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(speechAudio));
   } catch (err) {
-    console.error('Ava Error:', err);
-    res.status(500).json({ error: 'Something went wrong in the Ava voice agent.' });
+   console.error('Ava Error:', err.message);
+res.status(500).json({ error: err.message });
   }
 }
 
