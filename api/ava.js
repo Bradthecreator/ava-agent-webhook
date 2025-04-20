@@ -52,7 +52,13 @@ export default async function handler(req, res) {
     });
 
     const gptData = await gptResponse.json();
-    const replyText = gptData.choices[0].message.content;
+
+if (!gptData.choices || !gptData.choices[0]) {
+  throw new Error('GPT did not return a valid response.');
+}
+
+const replyText = gptData.choices[0].message.content;
+
     console.log('Ava says:', replyText);
 
     // Step 4: Use ElevenLabs to generate voice
