@@ -15,13 +15,14 @@ export default async function handler(req, res) {
     if (!audioUrl) return res.status(400).json({ error: 'Missing audioUrl' });
 
     // Step 1: Download audio
-    const audioResponse = await fetch(audioUrl + '.mp3');
+    const audioResponse = await fetch(audioUrl);
     const audioBuffer = await audioResponse.arrayBuffer();
 
     // Step 2: Transcribe with Whisper
     const formData = new FormData();
     formData.append('file', Buffer.from(audioBuffer), 'audio.mp3');
     formData.append('model', 'whisper-1');
+    formData.append('response_format', 'json');
 
     const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
@@ -31,13 +32,15 @@ export default async function handler(req, res) {
       body: formData,
     });
 
-    const whisperData = await whisperResponse.json();
-    const transcript = whisperData.text;
-    console.log('Whisper transcript:', transcript);
+    const whisperResult = await whisperResponse.json();
+    console.log('Whisper full response:', whisperResult);
 
-    if (!transcript || transcript.trim() === '') {
-      throw new Error('Whisper returned an empty transcript.');
+    if (!whisperResult.text || whisperResult.text.trim() === '') {
+      throw new Error(`Whisper failed: ${JSON.stringify(whisperResult)}`);
     }
+
+    const transcript = whisperResult.text;
+    console.log('Whisper transcript:', transcript);
 
     // Step 3: Send to GPT-4
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
