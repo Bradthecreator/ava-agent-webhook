@@ -20,7 +20,10 @@ export default async function handler(req, res) {
 
     // Step 2: Transcribe with Whisper
     const formData = new FormData();
-    formData.append('file', Buffer.from(audioBuffer), 'audio.mp3');
+    formData.append('file', Buffer.from(audioBuffer), {
+      filename: 'audio.mp3',
+      contentType: 'audio/mpeg',
+    });
     formData.append('model', 'whisper-1');
     formData.append('response_format', 'json');
 
@@ -46,51 +49,5 @@ export default async function handler(req, res) {
     const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: 'You are Ava, a professional, helpful voice assistant for an insurance agency.' },
-          { role: 'user', content: transcript },
-        ],
-      }),
-    });
+        Authorization: `Bearer ${process.env
 
-    const gptData = await gptResponse.json();
-
-    if (!gptData.choices || !gptData.choices[0]) {
-      throw new Error('GPT did not return a valid response.');
-    }
-
-    const replyText = gptData.choices[0].message.content;
-    console.log('Ava says:', replyText);
-
-    // Step 4: Generate voice with ElevenLabs
-    const elevenResponse = await fetch('https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL/stream', {
-      method: 'POST',
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: replyText,
-        model_id: 'eleven_monolingual_v1',
-        voice_settings: {
-          stability: 0.4,
-          similarity_boost: 0.75,
-        },
-      }),
-    });
-
-    const speechAudio = await elevenResponse.arrayBuffer();
-
-    // Step 5: Return audio to Twilio
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.send(Buffer.from(speechAudio));
-  } catch (err) {
-    console.error('Ava Error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-}
