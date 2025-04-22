@@ -1,3 +1,29 @@
+import fetch from 'node-fetch';
+import twilio from 'twilio';
+
+const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Jessica Anne Bogart voice ID
+const AVA_GREETING = 'Hi, this is Ava with United Liberty. How can I assist you today?';
+
+export default async function handler(req, res) {
+  const twiml = new twilio.twiml.VoiceResponse();
+
+  try {
+    // Step 1: Generate greeting audio using ElevenLabs
+    const greetingAudio = await textToSpeech(AVA_GREETING);
+
+    // Step 2: Build TwiML with Play + Stream
+    twiml.play(greetingAudio);
+    twiml.start().stream({ url: process.env.AVA_STREAM_URL });
+
+    res.setHeader('Content-Type', 'text/xml');
+    res.status(200).send(twiml.toString());
+  } catch (err) {
+    console.error('Ava Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// Helper: Convert text to audio using ElevenLabs
 async function textToSpeech(text) {
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
     method: 'POST',
@@ -21,7 +47,6 @@ async function textToSpeech(text) {
   const audioBase64 = Buffer.from(audioBuffer).toString('base64');
   return `data:audio/mpeg;base64,${audioBase64}`;
 }
-
   const audioBuffer = await response.arrayBuffer();
   const audioBase64 = Buffer.from(audioBuffer).toString('base64');
   return `data:audio/mpeg;base64,${audioBase64}`;
