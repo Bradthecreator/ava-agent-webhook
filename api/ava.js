@@ -1,53 +1,51 @@
 import fetch from 'node-fetch';
-import FormData from 'form-data';
+import { Twilio } from 'twilio';
+
+const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Jessica Anne Bogart voice ID
+const AVA_GREETING = 'Hi, this is Ava with United Liberty. How can I assist you today?';
 
 export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '25mb',
-    },
-  },
+  runtime: 'edge',
+  regions: ['iad'],
 };
 
-export default async function handler(req, res) {
-  try {
-    const { audioUrl } = req.body;
-    if (!audioUrl) return res.status(400).json({ error: 'Missing audioUrl' });
+export default async function handler(req) {
+  const twiml = new Twilio.twiml.VoiceResponse();
 
-    // Step 1: Download audio
-    const audioResponse = await fetch(audioUrl);
-    const audioBuffer = await audioResponse.arrayBuffer();
+  // Step 1: Generate greeting audio using ElevenLabs
+  const greetingAudio = await textToSpeech(AVA_GREETING);
 
-    // Step 2: Transcribe with Whisper
-    const formData = new FormData();
-    formData.append('file', Buffer.from(audioBuffer), {
-      filename: 'audio.mp3',
-      contentType: 'audio/mpeg',
-    });
-    formData.append('model', 'whisper-1');
-    formData.append('response_format', 'json');
+  // Step 2: Return TwiML response with the greeting and start streaming
+  twiml.play(greetingAudio);
+  twiml.start().stream({ url: process.env.AVA_STREAM_URL });
 
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+  return new Response(twiml.toString(), {
+    headers: { 'Content-Type': 'text/xml' },
+    status: 200,
+  });
+}
+
+// Helper function: Convert text to audio using ElevenLabs
+async function textToSpeech(text) {
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': process.env.ELEVENLABS_API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text,
+      model_id: 'eleven_monolingual_v1',
+      voice_settings: {
+        stability: 0.4,
+        similarity_boost: 0.8,
       },
-      body: formData,
-    });
+    }),
+  });
 
-    const whisperResult = await whisperResponse.json();
-    console.log('Whisper full response:', whisperResult);
+  if (!response.ok) throw new Error('Failed to generate ElevenLabs audio');
 
-    if (!whisperResult.text || whisperResult.text.trim() === '') {
-      throw new Error(`Whisper failed: ${JSON.stringify(whisperResult)}`);
-    }
-
-    const transcript = whisperResult.text;
-    console.log('Whisper transcript:', transcript);
-
-    // Step 3: Send to GPT-4
-    const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env
-
+  const audioBuffer = await response.arrayBuffer();
+  const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+  return `data:audio/mpeg;base64,${audioBase64}`;
+}
