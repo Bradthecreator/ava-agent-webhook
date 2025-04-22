@@ -2,7 +2,7 @@ async function textToSpeech(text) {
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
     method: 'POST',
     headers: {
-      'xi-api-key': process.env.ELEVENLABS_API_KEY_NEW,
+      'xi-api-key': process.env.ELEVENLABS_API_KEY_PROD,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
