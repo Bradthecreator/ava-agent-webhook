@@ -5,6 +5,8 @@
   "license": "MIT",
   "dependencies": {
     "form-data": "^4.0.0",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "twilio": "^4.0.0"
   }
 }
+
