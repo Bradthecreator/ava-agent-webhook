@@ -3,8 +3,7 @@
   "routes": [
     {
       "src": "/api/ava",
-      "dest": "/api/ava-handler.js"
+      "dest": "/api/ava.js"
     }
   ]
 }
-
