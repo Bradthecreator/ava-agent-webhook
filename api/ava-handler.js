@@ -1,45 +1,124 @@
-import fetch from 'node-fetch';
-import twilio from 'twilio';
+import { Readable } from 'stream';
+import axios from 'axios';
+import formidable from 'formidable';
 
-const ELEVENLABS_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Jessica Anne Bogart
-const AVA_GREETING = 'Hi, this is Ava with United Liberty. How can I assist you today?';
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Jessica Anne Bogart
 
 export default async function handler(req, res) {
-  const twiml = new twilio.twiml.VoiceResponse();
+  const form = new formidable.IncomingForm();
 
-  try {
-    const greetingAudio = await textToSpeech(AVA_GREETING);
-    twiml.play(greetingAudio);
-    twiml.start().stream({ url: process.env.AVA_STREAM_URL });
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error('❌ Form parse error:', err);
+      return res.status(500).send('Error parsing form data');
+    }
 
-    res.setHeader('Content-Type', 'text/xml');
-    res.status(200).send(twiml.toString());
-  } catch (err) {
-    console.error('Ava Error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
+    const audioFile = files.file;
+    if (!audioFile) {
+      return res.status(400).send('No audio file uploaded');
+    }
+
+    try {
+      // Transcribe audio with Whisper
+      const transcript = await transcribeWithWhisper(audioFile);
+      console.log('📝 Transcript:', transcript);
+
+      if (!transcript || !transcript.trim()) {
+        const reply = await speak('Sorry, I didn’t catch that. Could you say it again?');
+        return sendAudio(reply, res);
+      }
+
+      // Get GPT reply
+      const gptReply = await askGPT(transcript);
+      console.log('💬 GPT:', gptReply);
+
+      const replyAudio = await speak(gptReply);
+      return sendAudio(replyAudio, res);
+    } catch (error) {
+      console.error('❌ Processing failed:', error.message);
+      return res.status(500).send('Agent error');
+    }
+  });
 }
 
-async function textToSpeech(text) {
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
-    method: 'POST',
+// Whisper Transcription
+async function transcribeWithWhisper(file) {
+  const formData = new FormData();
+  formData.append('file', file.filepath ? createReadStream(file.filepath) : file, file.originalFilename || 'audio.wav');
+  formData.append('model', 'whisper-1');
+
+  const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, {
     headers: {
-      'xi-api-key': process.env.ELEVENLABS_API_KEY_PROD,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      ...formData.getHeaders(),
     },
-    body: JSON.stringify({
+  });
+
+  return response.data.text;
+}
+
+// GPT Chat
+async function askGPT(prompt) {
+  const response = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are Ava, a helpful, friendly insurance assistant at United Liberty. Answer clearly and helpfully.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  return response.data.choices[0].message.content;
+}
+
+// ElevenLabs TTS
+async function speak(text) {
+  const response = await axios.post(
+    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
+    {
       text,
       model_id: 'eleven_monolingual_v1',
       voice_settings: {
         stability: 0.4,
         similarity_boost: 0.8,
       },
-    }),
-  });
+    },
+    {
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      responseType: 'arraybuffer',
+    }
+  );
 
-  if (!response.ok) throw new Error('Failed to generate ElevenLabs audio');
+  return response.data;
+}
 
-  const audioBuffer = await response.arrayBuffer();
-  const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-  return `data:audio/mpeg;base64,${audioBase64}`;
+// Send audio buffer to caller
+function sendAudio(audioBuffer, res) {
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.status(200).send(audioBuffer);
 }
